@@ -165,6 +165,7 @@ enum {
     BTN_HIST_RANGE = 230,    // +0..2
     BTN_HIST_RELOAD = 235, BTN_HIST_ALL, BTN_HIST_NONE,
     BTN_SES_BOOK = 240, BTN_PATH_BOOK, BTN_TREE_BOOK,
+    BTN_PUPD_CHECK = 250, BTN_PUPD_OPEN,
     BTN_WD_OPEN = 210, BTN_WD_TICK, BTN_WD_PICK, BTN_UPD_CHECK, BTN_UPD_INSTALL, BTN_WD_INSTALL, BTN_WD_REMOVE,
     BTN_CONFIRM_YES = 900, BTN_CONFIRM_NO = 901,
 };
@@ -701,13 +702,21 @@ struct App {
     // ================== 02 ПИРЫ ==================
     std::map<std::wstring, double> pingMs;          // адрес -> мс (-1 нет ответа, -2 идёт)
 
-    void PingAsync(const std::wstring& addr) {
+    // ports: устройство из адресной книги - если пинг молчит (Windows по умолчанию режет
+    // входящий ICMP фаерволом), пробуем подключиться к SMB/RDP/SSH; время подключения
+    // примерно равно задержке.
+    void PingAsync(const std::wstring& addr, bool ports = false) {
         if (addr.empty()) return;
         pingMs[addr] = -2;
         Redraw();
-        Async([addr] {
+        Async([addr, ports] {
             double best = -1;
             for (int i = 0; i < 3; ++i) { double ms = util::Ping6(addr, 3000); if (ms >= 0 && (best < 0 || ms < best)) best = ms; }
+            if (best < 0 && ports)
+                for (const wchar_t* port : { L"445", L"3389", L"22" }) {
+                    double ms = util::TcpConnect(util::NormalizeIpv6(addr), port, 2000);
+                    if (ms >= 0) { best = ms; break; }
+                }
             wchar_t b[32]; swprintf(b, 32, L"%.1f", best);
             return std::wstring(b);
         }, [this, addr](const std::wstring& res) { pingMs[addr] = _wtof(res.c_str()); Redraw(); });
@@ -1502,7 +1511,7 @@ struct App {
     }
 
     void BookAction(int id) {
-        std::wstring name = util::Trim(tbBkName.text), addr = util::Trim(tbBkAddr.text);
+        std::wstring name = util::Trim(tbBkName.text), addr = util::NormalizeIpv6(util::Trim(tbBkAddr.text));
         switch (id) {
         case BTN_BK_SAVE: {
             if (name.empty() || addr.empty()) break;
@@ -1536,8 +1545,8 @@ struct App {
             }, COL_ALERT);
             break;
         }
-        case BTN_BK_PING: PingAsync(addr); break;
-        case BTN_BK_PINGALL: for (const auto& e : bookView) PingAsync(e.addr); break;
+        case BTN_BK_PING: PingAsync(addr, true); break;
+        case BTN_BK_PINGALL: for (const auto& e : bookView) PingAsync(e.addr, true); break;
         case BTN_BK_COPY: util::CopyToClipboard(hwnd, addr); Flash(L"Адрес скопирован."); break;
         }
     }
@@ -1929,16 +1938,14 @@ struct App {
         Btn(BTN_SV_STOP, x + 182, y, 170, 34, L"ОСТАНОВИТЬ", COL_ALERT, false, run);
         Btn(BTN_SV_RESTART, x + 364, y, 190, 34, L"ПЕРЕЗАПУСТИТЬ", COL_WARN, false, run);
         Btn(BTN_SV_LATER, x + 566, y, 190, 34, L"ЧЕРЕЗ 15 С", th.accent, false, run);
-        y += 46;
-        Note(x, y, w, L"«Через 15 с» - если ты сидишь на этом компьютере через сам Yggdrasil по RDP: команда успеет уйти, и связь вернётся сама.");
-        y += 40;
+        y += 44;
         Caption(x, y, w, L"ЗАПУСК ВМЕСТЕ С WINDOWS"); y += 20;
         Chip(BTN_SV_AUTO, x, y, 150, L"автоматически", s.startType == SERVICE_AUTO_START);
         Chip(BTN_SV_MANUAL, x + 160, y, 150, L"вручную", s.startType == SERVICE_DEMAND_START);
         Chip(BTN_SV_DISABLED, x + 320, y, 150, L"отключена", s.startType == SERVICE_DISABLED);
-        y += 40;
+        y += 36;
 
-        Caption(x, y, w, L"ОБНОВЛЕНИЯ YGGDRASIL  //  github.com/yggdrasil-network/yggdrasil-go"); y += 20;
+        Caption(x, y, w, L"ОБНОВЛЕНИЯ  //  Yggdrasil и эта панель"); y += 20;
         std::wstring ut;
         unsigned uc = th.muted;
         bool newer = upd.ok && !snap.version.empty() && util::VersionNewer(snap.version, upd.tag);
@@ -1947,9 +1954,25 @@ struct App {
         else if (!upd.ok) { ut = L"не удалось: " + upd.err; uc = COL_WARN; }
         else if (newer) { ut = L"вышла " + upd.tag + L" (у тебя " + snap.version + L")"; uc = COL_OK; }
         else ut = L"у тебя последняя: " + upd.tag + L"   ·   проверено в " + util::TimeText(upd.at, L"%H:%M");
-        r.Text(ut, x, y, w - 420, 32, Rgb(uc), 12);
+        r.Text(L"YGGDRASIL", x, y, 100, 32, Rgb(th.muted), 10, true);
+        r.Text(ut, x + 100, y, w - 520, 32, Rgb(uc), 12);
         Btn(BTN_UPD_CHECK, x + w - 410, y, 150, 32, L"ПРОВЕРИТЬ", th.accent, false, !updChecking);
         Btn(BTN_UPD_INSTALL, x + w - 248, y, 248, 32, newer ? L"УСТАНОВИТЬ " + upd.tag : L"УСТАНОВИТЬ", COL_OK, newer, newer && !upd.msiUrl.empty());
+        y += 38;
+        {
+            bool pnew = pupd.ok && util::VersionNewer(ygg::PANEL_VERSION, pupd.tag);
+            std::wstring pt;
+            unsigned pc = th.muted;
+            if (pupdChecking) pt = L"проверяю…";
+            else if (!pupd.checked) pt = L"у тебя v" + std::wstring(ygg::PANEL_VERSION) + L"   ·   ещё не проверял";
+            else if (!pupd.ok) { pt = L"у тебя v" + std::wstring(ygg::PANEL_VERSION) + L"   ·   " + pupd.err; if (pupd.err.find(L"нет ни одного") == std::wstring::npos) pc = COL_WARN; }
+            else if (pnew) { pt = L"вышла " + pupd.tag + L" (у тебя v" + ygg::PANEL_VERSION + L")"; pc = COL_OK; }
+            else pt = L"у тебя последняя: v" + std::wstring(ygg::PANEL_VERSION) + L"   ·   проверено в " + util::TimeText(pupd.at, L"%H:%M");
+            r.Text(L"ПАНЕЛЬ", x, y, 100, 32, Rgb(th.muted), 10, true);
+            r.Text(pt, x + 100, y, w - 520, 32, Rgb(pc), 12);
+            Btn(BTN_PUPD_CHECK, x + w - 410, y, 150, 32, L"ПРОВЕРИТЬ", th.accent, false, !pupdChecking);
+            Btn(BTN_PUPD_OPEN, x + w - 248, y, 248, 32, L"СТРАНИЦА РЕЛИЗА", COL_OK, pnew, pupd.ok && !pupd.page.empty());
+        }
 
         float by = MY + MH - 50;
         Btn(BTN_SV_CONFDIR, x, by, 200, 34, L"ПАПКА КОНФИГА", th.accent);
@@ -1959,6 +1982,22 @@ struct App {
 
     ygg::UpdateInfo upd;
     bool updChecking = false;
+    ygg::UpdateInfo pupd;          // обновления самой панели
+    bool pupdChecking = false;
+
+    void CheckPanelUpdate(bool quiet) {
+        if (pupdChecking) return;
+        pupdChecking = true;
+        auto holder = std::make_shared<ygg::UpdateInfo>();
+        Async([holder] { *holder = ygg::CheckPanelUpdate(); return std::wstring(); }, [this, holder, quiet](const std::wstring&) {
+            pupdChecking = false;
+            pupd = *holder;
+            bool pnew = pupd.ok && util::VersionNewer(ygg::PANEL_VERSION, pupd.tag);
+            if (pnew) Flash(L"Вышла новая версия панели " + pupd.tag + L" - на экране «Служба».", COL_OK);
+            else if (!quiet) Flash(pupd.ok ? L"Панель последней версии: " + pupd.tag : L"Панель: " + pupd.err, pupd.ok ? 0 : COL_WARN);
+            Redraw();
+        });
+    }
 
     void CheckUpdate(bool quiet) {
         if (updChecking) return;
@@ -2620,6 +2659,8 @@ struct App {
             break;
         case BTN_UPD_CHECK: CheckUpdate(false); break;
         case BTN_UPD_INSTALL: InstallUpdate(); break;
+        case BTN_PUPD_CHECK: CheckPanelUpdate(false); break;
+        case BTN_PUPD_OPEN: if (!pupd.page.empty()) ShellExecuteW(nullptr, L"open", pupd.page.c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
         case BTN_REFRESH: data.RefreshNow(); if (screen == SCR_CONFIG && !cfgLoaded) ReloadConfig(); Flash(L"Обновляю…"); break;
         case BTN_START_SVC: ServiceAction(L"start", L"запускаю службу", L"Служба запущена."); break;
         case BTN_COPY_ADDR: util::CopyToClipboard(hwnd, SelfAddr()); Flash(L"Адрес скопирован."); break;
@@ -2972,6 +3013,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         a.data.Start(hwnd);
         a.ReloadConfig();
         a.CheckUpdate(true);
+        a.CheckPanelUpdate(true);
         util::RegWriteString(ygg::REG_CONTROL, L"Path", util::SelfExe());   // чтобы сторож мог найти панель
         SetTimer(hwnd, TIMER_CLOCK, 1000, nullptr);
         SetTimer(hwnd, TIMER_BLINK, 500, nullptr);

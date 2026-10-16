@@ -247,6 +247,29 @@ struct UpdateInfo {
     long long at = 0;
 };
 
+// Версия самой панели - поднимать вручную при выпуске
+static const wchar_t* PANEL_VERSION = L"1.0.0";
+
+// Обновления самой панели: последний релиз Yozmor/ygg-control
+inline UpdateInfo CheckPanelUpdate() {
+    UpdateInfo u;
+    u.checked = true;
+    u.at = (long long)time(nullptr);
+    DWORD status = 0;
+    std::string body = util::HttpGet(L"https://api.github.com/repos/Yozmor/ygg-control/releases/latest", &status,
+                                     4 * 1024 * 1024, L"Accept: application/vnd.github+json\r\n");
+    json::Value v;
+    if (status == 404) { u.err = L"на GitHub пока нет ни одного релиза панели"; return u; }
+    if (body.empty() || !json::Parse(body, v) || v[L"tag_name"].str().empty()) {
+        u.err = status ? L"GitHub ответил кодом " + std::to_wstring(status) : L"GitHub недоступен";
+        return u;
+    }
+    u.ok = true;
+    u.tag = v[L"tag_name"].str();
+    u.page = v[L"html_url"].str();
+    return u;
+}
+
 inline UpdateInfo CheckYggUpdate() {
     UpdateInfo u;
     u.checked = true;

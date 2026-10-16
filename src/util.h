@@ -182,9 +182,27 @@ inline bool CopyToClipboard(HWND owner, const std::wstring& s) {
 // ------------------------------------------------------------------
 struct WsaInit { WsaInit() { WSADATA d; WSAStartup(MAKEWORD(2, 2), &d); } };
 
+// Адрес в виде для SMB "201-831c-...-b93a.ipv6-literal.net" (через дефисы) -> обычный
+// IPv6 "201:831c:...:b93a". Остальные адреса возвращаются как есть.
+inline std::wstring NormalizeIpv6(std::wstring a) {
+    while (!a.empty() && (a.back() == L' ' || a.back() == L'\\')) a.pop_back();
+    while (!a.empty() && (a.front() == L' ' || a.front() == L'\\')) a.erase(0, 1);
+    static const std::wstring suf = L".ipv6-literal.net";
+    if (a.size() > suf.size() && _wcsicmp(a.c_str() + a.size() - suf.size(), suf.c_str()) == 0) {
+        a.resize(a.size() - suf.size());
+        for (auto& c : a) { if (c == L'-') c = L':'; else if (c == L's') c = L'%'; }
+    } else if (a.find(L':') == std::wstring::npos && a.find(L'-') != a.rfind(L'-')) {
+        bool hex = true;
+        for (wchar_t c : a) if (!(iswxdigit(c) || c == L'-')) { hex = false; break; }
+        if (hex) for (auto& c : a) if (c == L'-') c = L':';
+    }
+    return a;
+}
+
 // Пинг IPv6 (адреса Yggdrasil). Возвращает мс или -1.
-inline double Ping6(const std::wstring& address, DWORD timeoutMs = 3000) {
+inline double Ping6(const std::wstring& addressIn, DWORD timeoutMs = 3000) {
     static WsaInit wsa;
+    std::wstring address = NormalizeIpv6(addressIn);
     sockaddr_in6 dst = {}, src = {};
     dst.sin6_family = AF_INET6;
     src.sin6_family = AF_INET6;
