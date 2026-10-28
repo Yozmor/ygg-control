@@ -1,0 +1,79 @@
+--- ygg_control.cpp (прошлый архив)
++++ ygg_control.cpp (новый)
+@@ -2006,13 +2006,15 @@
+         bool pnew = pupd.ok && util::VersionNewer(ygg::PANEL_VERSION, pupd.tag);
+         if (!pnew) return;
+         Confirm(L"Скачать панель v" + pupd.tag + L" из репозитория и поставить?\n"
+-                L"Панель закроется, файл заменится, и она откроется снова. Старая версия сохранится рядом как ygg_control.exe.backup.",
++                L"Панель закроется, файл заменится, и она откроется снова. Старая версия сохранится рядом как ygg_control.exe.backup "
++                L"и вернётся сама, если новая не запустится.",
+                 L"УСТАНОВИТЬ", [this] {
+-            std::wstring self = util::SelfExe();
+-            Op(L"скачиваю панель v" + pupd.tag, [self] {
+-                std::wstring err = ygg::DownloadPanelExe(self + L".new");
++            std::wstring self = util::SelfExe(), tag = pupd.tag;
++            std::wstring fresh = util::DirOf(self) + L"ygg_control.new.exe";   // на .exe - его запускаем для самопроверки
++            Op(L"скачиваю панель v" + tag, [fresh, tag] {
++                std::wstring err = ygg::DownloadPanelExe(fresh, tag);
+                 return err.empty() ? std::wstring() : L"!" + err;
+-            }, L"Скачано - перезапускаюсь…", [this, self](bool ok) {
++            }, L"Скачано - перезапускаюсь…", [this, self, tag, fresh](bool ok) {
+                 if (!ok) return;
+                 std::wstring bat = util::DirOf(self) + L"ygg_control_update.cmd";
+                 std::wstring pid = std::to_wstring(GetCurrentProcessId());
+@@ -2021,9 +2023,15 @@
+                     L"chcp 65001 >nul\r\n"          // файл в UTF-8: путь с кириллицей не сломается
+                     L":wait\r\n"
+                     L"tasklist /FI \"PID eq " + pid + L"\" 2>NUL | find \"" + pid + L"\" >NUL\r\n"
+-                    L"if not errorlevel 1 (timeout /T 1 >NUL & goto wait)\r\n"
++                    L"if not errorlevel 1 (ping -n 2 127.0.0.1 >NUL & goto wait)\r\n"   // пауза 1 с; timeout без консоли не работает
+                     L"copy /Y \"" + self + L"\" \"" + self + L".backup\" >NUL\r\n"
+-                    L"move /Y \"" + self + L".new\" \"" + self + L"\" >NUL\r\n"
++                    L"move /Y \"" + fresh + L"\" \"" + self + L"\" >NUL\r\n"
++                    // самопроверка новой версии; не прошла - возвращаем старую
++                    L"\"" + self + L"\" --selftest >NUL 2>&1\r\n"
++                    L"if errorlevel 1 (\r\n"
++                    L"  copy /Y \"" + self + L".backup\" \"" + self + L"\" >NUL\r\n"
++                    L"  >\"" + util::DirOf(self) + L"ygg_control_update_failed.txt\" echo " + tag + L"\r\n"
++                    L")\r\n"
+                     L"start \"\" \"" + self + L"\"\r\n"
+                     L"del \"%~f0\"\r\n";
+                 if (!util::WriteFileBytes(bat, util::ToUtf8(cmd))) { Flash(L"Ошибка: не удалось записать " + bat, COL_ALERT); return; }
+@@ -3060,6 +3068,15 @@
+         a.ReloadConfig();
+         a.CheckUpdate(true);
+         a.CheckPanelUpdate(true);
++        {   // прошлое обновление не прошло самопроверку - скрипт вернул старую версию
++            std::wstring fail = util::DirOf(util::SelfExe()) + L"ygg_control_update_failed.txt";
++            if (util::FileExists(fail)) {
++                std::wstring tag = util::Trim(util::FromUtf8(util::ReadFileBytes(fail)));
++                DeleteFileW(fail.c_str());
++                a.Flash(L"Обновление панели" + (tag.empty() ? L"" : L" до v" + tag) + L" не запустилось - вернул прежнюю v" +
++                        ygg::PANEL_VERSION + L".", COL_WARN);
++            }
++        }
+         util::RegWriteString(ygg::REG_CONTROL, L"Path", util::SelfExe());   // чтобы сторож мог найти панель
+         SetTimer(hwnd, TIMER_CLOCK, 1000, nullptr);
+         SetTimer(hwnd, TIMER_BLINK, 500, nullptr);
+@@ -3118,6 +3135,21 @@
+ }
+ 
+ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nCmdShow) {
++    // --selftest - для скрипта обновления: exe целиком загрузился (все DLL нашлись)
++    // и графика создаётся. Без прав администратора, без окна, сразу выход.
++    if (wcsstr(GetCommandLineW(), L"--selftest")) {
++        ID2D1Factory* d2 = nullptr;
++        IDWriteFactory* dw = nullptr;
++        bool ok = SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &d2)) &&
++                  SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown**)&dw));
++        if (d2) d2->Release();
++        if (dw) dw->Release();
++        if (!ok) return 1;
++        std::string v = util::ToUtf8(ygg::PANEL_VERSION) + "\n";   // обновление сверяет версию
++        DWORD n = 0;
++        WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), v.data(), (DWORD)v.size(), &n, nullptr);
++        return 0;
++    }
+     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+ 
