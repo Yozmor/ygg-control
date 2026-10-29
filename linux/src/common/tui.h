@@ -49,6 +49,7 @@ struct Canvas {
         if (maxX < 0) maxX = w;
         for (uint32_t cp : util::U8Decode(text)) {
             if (x >= maxX) break;
+            if (cp < 0x20 || cp == 0x7F) cp = ' ';      // перевод строки и т.п. сломали бы экран
             if (Cell* c = At(x, y)) {
                 c->ch = util::U8Encode(cp);
                 c->fg = fg;

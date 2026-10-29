@@ -274,7 +274,8 @@ inline std::string InstalledVersion(const Paths& p) {
     return "";
 }
 inline std::string DebArch() {
-    util::ProcResult r = util::Run({ "dpkg", "--print-architecture" }, 5000);
+    std::vector<std::string> cmd = { "dpkg", "--print-architecture" };   // отдельной переменной: иначе GCC 15 ложно предупреждает
+    util::ProcResult r = util::Run(cmd, 5000);
     std::string a = util::Trim(r.out);
     return a.empty() ? "amd64" : a;
 }

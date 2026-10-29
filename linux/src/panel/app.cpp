@@ -71,7 +71,8 @@ public:
     ygg::UpdateInfo yupd;
     bool pupdChecking = false, yupdChecking = false;
 
-    void Flash(const std::string& t, Color c = TX) { flash = t; flashColor = c; flashAt = util::Now(); }
+    // строка внизу - одна: переводы строк (вывод apt и т.п.) склеиваются, иначе ломают экран
+    void Flash(const std::string& t, Color c = TX) { flash = util::OneLine(t); flashColor = c; flashAt = util::Now(); }
     void Push(Screen* sc) { stack.emplace_back(sc); sc->OnShow(*this); }
     void Pop() { if (stack.size() > 1) stack.pop_back(); if (!stack.empty()) stack.back()->OnShow(*this); }
 
@@ -489,7 +490,7 @@ struct MainScreen : Screen {
             c.Seq(3, 2, { { s.ctlOk ? s.self["address"].str() : "нет связи с Yggdrasil", s.ctlOk ? WH : RD }, { "   ● ", up0 ? G : RD },
                           { std::to_string(up0) + " на связи", up0 ? G : RD }, { "   ↓ " + Rate(rxr) + "  ↑ " + Rate(txr), DM } }, W - 2);
         } else {
-            const char* logo[] = { "  ▄▄▄▄▄", "▄▄▄╲ │╱▄▄▄", " ▀▀▀╲│╱", "     █", "   ╱╱█╲╲" };
+            const char* logo[] = { "  ▄▄▄▄▄  ", "▄▄▄╲│╱▄▄▄", " ▀▀╲│╱▀▀ ", "    █    ", "  ╱╱█╲╲  " };   // как на макете
             for (int i = 0; i < 5; ++i) c.Put(3, 1 + i, logo[i], B);
             c.Seq(16, 2, { { "YGGDRASIL", B, true }, { " " + (s.version.empty() ? std::string("?") : s.version), DM } });
             c.Seq(16, 3, { { "панель управления  ", DM }, { std::string("v") + PANEL_VERSION, DM } });

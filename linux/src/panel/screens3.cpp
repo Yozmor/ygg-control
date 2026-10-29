@@ -35,9 +35,23 @@ void InstallYgg(App& a) {
             if (!r.transportOk || r.status != 200 || !r.complete || r.body.size() < 100000) return std::string("!не удалось скачать ") + name;
             std::string path = "/tmp/" + name;
             if (!util::WriteFile(path, r.body, 0644)) return "!не удалось записать " + path;
-            util::ProcResult p = util::Run({ "apt-get", "install", "-y", "--allow-downgrades", path }, 600000);
+            // без вопросов (DEBIAN_FRONTEND), свой конфиг не заменять (--force-confold)
+            util::ProcResult p = util::Run({ "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "--allow-downgrades",
+                                             "-o", "Dpkg::Options::=--force-confold", path }, 600000);
             unlink(path.c_str());
-            if (p.code != 0) return "!apt не справился: " + util::U8Left(util::Trim(p.out), 200);
+            std::string logPath = util::SelfDir() + "apt-yggdrasil.log";
+            util::WriteFile(logPath, p.out);
+            if (p.code != 0) {
+                // причина - строки «E:» (или dpkg: error), а не «Reading package lists...»
+                std::string why;
+                for (const auto& l : util::Lines(p.out)) {
+                    std::string t = util::Trim(l);
+                    if (util::StartsWith(t, "E:") || util::IContains(t, "dpkg: error") || util::IContains(t, "dependency problems") || util::IContains(t, "depends"))
+                        why += (why.empty() ? "" : " | ") + t;
+                }
+                if (why.empty()) { auto ls = util::Lines(util::Trim(p.out)); why = ls.empty() ? "код " + std::to_string(p.code) : ls.back(); }
+                return "!apt не справился: " + util::U8Left(why, 300) + " (весь вывод: " + logPath + ")";
+            }
             return "Yggdrasil обновлён: " + name;
         }, "", [&a](const std::string&) { a.data.ReloadPaths(); });
     }, true);
