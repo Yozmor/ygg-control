@@ -91,6 +91,9 @@ private:
             s.ctlErr = s.ctlOk ? "" : err;
             if (s.ctlOk) {
                 s.self = v;
+                // версию отдаёт и сам работающий Yggdrasil - она точнее (сразу видна после обновления)
+                if (!v["build_version"].str().empty()) { s.version = v["build_version"].str(); if (s.version[0] == 'v') s.version.erase(0, 1); }
+                else if (s.version.empty() && tick % 20 == 0) s.version = ygg::InstalledVersion(s.paths);
                 if (ygg::Ctl("getPeers", v, err, 8000)) s.peers = v["peers"];
                 if (ygg::Ctl("getSessions", v, err, 8000)) s.sessions = v["sessions"];
                 if (tick % 2 == 0) {

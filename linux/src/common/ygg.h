@@ -1,5 +1,7 @@
 // ygg.h - Yggdrasil на Linux: где что лежит, yggdrasilctl, конфиг, служба.
 #pragma once
+#include <algorithm>
+#include <cctype>
 #include "util.h"
 #include "json.h"
 #include "net.h"
@@ -265,11 +267,39 @@ inline std::string RestartDelayed(int seconds) {
 
 // ---------------------------------------------------------------- обновления Yggdrasil
 struct UpdateInfo { bool checked = false, ok = false; std::string tag, page, err, debUrl, debName; long long at = 0; };
-inline std::string InstalledVersion(const Paths& p) {
-    util::ProcResult r = util::Run({ p.exe, "-version" }, 10000);
-    for (const auto& l : util::Lines(r.out)) {
-        size_t c = util::Lower(l).find("build version:");
+// Версия установленного Yggdrasil. Вывод «-version» в разных версиях разный,
+// поэтому несколько способов по очереди: -version / --version, потом пакет dpkg.
+inline std::string VersionFromText(const std::string& out) {
+    for (const auto& l : util::Lines(out)) {
+        std::string low = util::Lower(l);
+        size_t c = low.find("build version:");
         if (c != std::string::npos) return util::Trim(l.substr(c + 14));
+    }
+    for (const auto& l : util::Lines(out)) {   // просто «0.5.15» или «yggdrasil v0.5.15»
+        std::string t = util::Trim(l);
+        for (size_t i = 0; i < t.size(); ++i)
+            if (isdigit((unsigned char)t[i]) && (i == 0 || t[i - 1] == ' ' || t[i - 1] == 'v')) {
+                size_t j = i;
+                while (j < t.size() && (isdigit((unsigned char)t[j]) || t[j] == '.')) ++j;
+                std::string v = t.substr(i, j - i);
+                if (std::count(v.begin(), v.end(), '.') >= 1) return v;
+            }
+    }
+    return "";
+}
+inline std::string InstalledVersion(const Paths& p) {
+    for (const char* flag : { "-version", "--version" }) {
+        if (p.exe.empty()) break;
+        util::ProcResult r = util::Run({ p.exe, flag }, 10000);
+        std::string v = VersionFromText(r.out);
+        if (!v.empty()) return v;
+    }
+    util::ProcResult d = util::Run({ "dpkg-query", "-W", "-f=${Version}", "yggdrasil" }, 10000);
+    if (d.code == 0) {
+        std::string v = util::Trim(d.out);
+        size_t k = v.find_first_of("-+~");   // 0.5.15-1 -> 0.5.15
+        if (k != std::string::npos) v = v.substr(0, k);
+        if (!v.empty()) return v;
     }
     return "";
 }

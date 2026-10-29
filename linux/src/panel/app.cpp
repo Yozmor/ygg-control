@@ -490,9 +490,10 @@ struct MainScreen : Screen {
             c.Seq(3, 2, { { s.ctlOk ? s.self["address"].str() : "нет связи с Yggdrasil", s.ctlOk ? WH : RD }, { "   ● ", up0 ? G : RD },
                           { std::to_string(up0) + " на связи", up0 ? G : RD }, { "   ↓ " + Rate(rxr) + "  ↑ " + Rate(txr), DM } }, W - 2);
         } else {
-            // логотип как в старой панели: блоки-четвертинки (терминал рисует их сам, во всю ячейку), 11×6
-            const char* logo[] = { "  ▗▟███▙▖  ", "▗▄▄▄╲│╱▄▄▄▖", "▀▀▀▘╲│╱▝▀▀▀", " ▜██╲│╱██▛ ", "     ▄     ", "   ╱╱█╲╲   " };
-            for (int i = 0; i < 6; ++i) c.Put(3, 1 + i, logo[i], B);
+            // логотип как в старой панели: секстанты (клетка делится 2×3) - сверху узкий ярус,
+            // под ним широкий, снизу просвет до следующей строки. 11×5
+            const char* logo[] = { "  🬇🬍🬎🬎🬎🬌🬃  ", "🬇🬎🬎🬀╲│╱🬁🬎🬎🬃", " 🬁🬎🬎╲│╱🬎🬎🬀 ", "     🬎     ", "   ╱╱█╲╲   " };
+            for (int i = 0; i < 5; ++i) c.Put(3, 1 + i, logo[i], B);
             c.Seq(16, 2, { { "YGGDRASIL", B, true }, { " " + (s.version.empty() ? std::string("?") : s.version), DM } });
             c.Seq(16, 3, { { "панель управления  ", DM }, { std::string("v") + PANEL_VERSION, DM } });
         }
