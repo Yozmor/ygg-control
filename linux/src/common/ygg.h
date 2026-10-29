@@ -296,9 +296,16 @@ inline UpdateInfo CheckYggUpdate() {
     u.page = v["html_url"].str();
     std::string arch = DebArch();
     const json::Value& as = v["assets"];
+    // В релизе несколько .deb одной архитектуры: обычный yggdrasil-0.5.15-amd64.deb
+    // и пакеты для роутеров (vyos, edgerouter...) - те требуют свои системы и
+    // apt их не поставит. Берём точное имя, иначе - самое короткое без «роутерных» слов.
+    std::string exact = "yggdrasil-" + u.tag + "-" + arch + ".deb";
     for (size_t i = 0; i < as.size(); ++i) {
-        std::string n = as[i]["name"].str();
-        if (util::EndsWith(n, ".deb") && util::Contains(n, arch)) { u.debName = n; u.debUrl = as[i]["browser_download_url"].str(); }
+        std::string n = as[i]["name"].str(), l = util::Lower(n);
+        if (!util::EndsWith(l, ".deb") || !util::Contains(l, arch)) continue;
+        if (util::Contains(l, "vyos") || util::Contains(l, "edgerouter") || util::Contains(l, "router") || util::Contains(l, "openwrt")) continue;
+        bool better = u.debName.empty() || n == exact || (u.debName != exact && n.size() < u.debName.size());
+        if (better) { u.debName = n; u.debUrl = as[i]["browser_download_url"].str(); }
     }
     return u;
 }

@@ -2,6 +2,7 @@
 // трафик, сторож. Собирается в фоновом потоке раз в 3 секунды.
 #pragma once
 #include "../common/ygg.h"
+#include "../common/repobuild.h"
 #include "version.h"
 #include <deque>
 #include <map>
@@ -324,13 +325,46 @@ inline std::string SelfTestVersion(const std::string& exe) {
     if (!r.started || r.timedOut || r.code != 0) return "";
     return util::Trim(r.out);
 }
+// Поставить проверенный файл fresh на место работающего. Работающий файл не
+// перезаписывается, а заменяется переименованием - эта копия панели доработает
+// на старом, следующий запуск возьмёт новый. Старый - рядом как .backup.
+inline std::string InstallFreshPanel(const std::string& fresh, const std::string& expect) {
+    std::string self = util::SelfExe(), backup = self + ".backup";
+    util::CopyFile(self, backup);
+    chmod(backup.c_str(), 0755);
+    if (rename(fresh.c_str(), self.c_str()) != 0) { unlink(fresh.c_str()); return "не удалось заменить файл"; }
+    if (SelfTestVersion(self) != expect) {
+        rename(backup.c_str(), self.c_str());
+        return "новая версия не прошла самопроверку на месте - возвращена прежняя";
+    }
+    return "";
+}
+// Собрать панель из исходников репозитория (на этом компьютере)
+inline std::string BuildPanelFromRepo(const std::string& expect, const std::string& why) {
+    std::string self = util::SelfExe(), fresh = self + ".new";
+    repobuild::Result b = repobuild::Build(std::string(PANEL_REPO_PAGE) + ".git", "ygg-control", util::SelfDir() + "update-build.log");
+    if (!b.err.empty()) { repobuild::Cleanup(b); return why + ", а " + b.err; }
+    std::string got = SelfTestVersion(b.built);
+    if (got != expect) {
+        repobuild::Cleanup(b);
+        return got.empty() ? "собранная панель не запускается" : "собралась версия " + got + ", а в version.h " + expect;
+    }
+    if (!util::CopyFile(b.built, fresh)) { repobuild::Cleanup(b); return "не удалось записать " + fresh + " (нужен root)"; }
+    chmod(fresh.c_str(), 0755);
+    repobuild::SyncSources(b, util::SelfDir(), "ygg-control");
+    repobuild::Cleanup(b);
+    return InstallFreshPanel(fresh, expect);
+}
 // Скачать, проверить и поставить новую панель. Пусто - получилось.
-// Работающий файл не перезаписывается, а заменяется переименованием -
-// эта копия панели доработает на старом, следующий запуск возьмёт новый.
+// Есть в репозитории готовый linux/ygg-control нужной версии - берём его;
+// нет (или там старая сборка) - собираем из исходников здесь же.
 inline std::string ApplyPanelUpdate(const std::string& expect) {
-    std::string self = util::SelfExe(), fresh = self + ".new", backup = self + ".backup";
+    std::string self = util::SelfExe(), fresh = self + ".new";
     RepoFile f = GetRepoFile("linux/ygg-control");
-    if (!f.ok) return f.err;
+    if (!f.ok) {
+        if (util::StartsWith(f.err, "в репозитории нет")) return BuildPanelFromRepo(expect, "готовой программы в репозитории нет");
+        return f.err;
+    }
     net::RequestOpts o;
     o.maxBody = 200 * 1024 * 1024;
     o.timeoutMs = 120000;
@@ -344,17 +378,12 @@ inline std::string ApplyPanelUpdate(const std::string& expect) {
     std::string got = SelfTestVersion(fresh);
     if (got != expect) {
         unlink(fresh.c_str());
-        return got.empty() ? "скачанная панель не запускается" : "в репозитории номер версии " + expect + ", а linux/ygg-control внутри " + got +
-                                                                    " - похоже, свежую сборку забыли закоммитить";
+        // готовая сборка старая (или не запускается здесь) - собираем свежую
+        return BuildPanelFromRepo(expect, got.empty() ? "готовая программа из репозитория здесь не запускается"
+                                                      : "готовая программа в репозитории старая (" + got + ")");
     }
-    util::CopyFile(self, backup);
-    chmod(backup.c_str(), 0755);
-    if (rename(fresh.c_str(), self.c_str()) != 0) { unlink(fresh.c_str()); return "не удалось заменить файл"; }
-    if (SelfTestVersion(self) != expect) {
-        rename(backup.c_str(), self.c_str());
-        return "новая версия не прошла самопроверку на месте - возвращена прежняя";
-    }
-    return "";
+    std::string e = InstallFreshPanel(fresh, expect);
+    return e;
 }
 
 } // namespace pnl

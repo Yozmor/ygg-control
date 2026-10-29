@@ -5,10 +5,10 @@ namespace pnl {
 void InstallPanel(App& a) {
     if (!(a.pupd.ok && util::VersionNewer(PANEL_VERSION, a.pupd.tag))) { a.Flash("Новой версии панели нет - сначала проверь [r].", OR); a.CheckPanelUpdate(false); return; }
     std::string tag = a.pupd.tag;
-    a.Confirm("обновить панель", "Скачать панель v" + tag + " из репозитория и поставить?\nПроверка: git-отпечаток файла и самопроверка новой версии. "
+    a.Confirm("обновить панель", "Поставить панель v" + tag + " из репозитория?\nГотовая программа там есть - скачается, нет - панель соберёт себя из исходников (около минуты). "
               "Старая останется рядом как ygg-control.backup и вернётся сама, если новая не запустится. После установки панель перезапустится.\n\nEnter - установить",
               [&a, tag] {
-        a.Op("ставлю панель v" + tag, [tag] { std::string e = ApplyPanelUpdate(tag); return e.empty() ? std::string() : "!" + e; }, "",
+        a.Op("ставлю панель v" + tag + " (если нужно - собираю)", [tag] { std::string e = ApplyPanelUpdate(tag); return e.empty() ? std::string() : "!" + e; }, "",
              [&a](const std::string& res) {
                  if (!res.empty() && res[0] == '!') return;
                  // перезапуск на новой версии
@@ -100,8 +100,9 @@ struct UpdatesScreen : Screen {
         DrawUpdates(c, a, 2, 3, c.w - 4, 9);
         int y = 13;
         for (const auto& l : Wrap("Релизов у панели нет: версия берётся из linux/src/panel/version.h, программа - linux/ygg-control. "
-                                  "Скачанный файл сверяется с git-отпечатком и запускается с --selftest - если номер подняли, а программу забыли закоммитить, "
-                                  "панель откажется ставить старый файл как новый.", c.w - 6))
+                                  "Если там лежит готовая программа нужной версии - она скачивается и сверяется с git-отпечатком; если её нет или она старая - "
+                                  "панель скачивает папку linux/ и собирает себя здесь же (нужны g++, libssl-dev, git; около минуты). "
+                                  "Новая версия запускается с --selftest и только потом заменяет старую.", c.w - 6))
             if (y < c.h - 2) c.Put(3, y++, l, DM);
         Footer(c, a, { { "r", "проверить" }, { "i", "установить панель" }, { "y", "установить Yggdrasil" }, { "Esc", "назад" } });
     }
