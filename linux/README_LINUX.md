@@ -21,17 +21,19 @@ chmod +x build.sh install.sh tests/run_tests.sh ygg-control 2>/dev/null   # ра
 sudo ./install.sh
 ```
 
-`install.sh` проверяет программу и добавляет команду `ygg-control`. Панель живёт в `~/ygg-control`, там же её адресная книга `addressbook.txt`.
+`install.sh` проверяет программу и добавляет команды `yggdrasil` и `ygg-control` — обе открывают панель. Сама панель живёт в домашней папке, в `~/ygg-control`: там же её адресная книга `addressbook.txt`. В системе появляются только ссылки в `/usr/local/bin`.
 
-**Удаление:** `sudo ./install.sh --remove` (убирает команду, файлы остаются).
+**Удаление:** `sudo ./install.sh --remove` (убирает обе команды, файлы остаются).
 
 ## Запуск
 
 ```bash
-ygg-control
+yggdrasil
 ```
 
-Попросит пароль sudo: `yggdrasilctl`, конфиг и `systemctl` требуют root. Нужен терминал хотя бы 80×24.
+(или `ygg-control` — то же самое). Попросит пароль sudo: `yggdrasilctl`, конфиг и `systemctl` требуют root. Нужен терминал хотя бы 80×24.
+
+**Команда `yggdrasil` и сам Yggdrasil.** Так же называется программа самого Yggdrasil (`/usr/bin/yggdrasil`). Панель различает вызовы: `yggdrasil` **без аргументов** открывает панель, а **с аргументами** (`yggdrasil -genconf`, `yggdrasil -version`, `yggdrasil -useconffile …`) передаёт их настоящему Yggdrasil — он и служба работают как раньше (systemd запускает службу по полному пути). Если в `/usr/local/bin/yggdrasil` уже лежит сам Yggdrasil (ручная установка), `install.sh` его не трогает, и панель открывается командой `ygg-control`. Если сразу после установки `yggdrasil` в открытом терминале ведёт себя по-старому — выполни `hash -r` или открой новое окно.
 
 ## Главное меню
 

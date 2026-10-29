@@ -51,7 +51,8 @@ int App::Main() {
 #ifndef YGG_CONTROL_NO_MAIN
 static void PrintHelp() {
     printf("ygg-control %s - панель управления Yggdrasil в терминале\n\n", PANEL_VERSION);
-    printf("  ygg-control              открыть панель (попросит пароль sudo)\n");
+    printf("  yggdrasil  или  ygg-control   открыть панель (попросит пароль sudo)\n");
+    printf("  yggdrasil <аргументы>         команда самому Yggdrasil (-genconf, -version...) - передаётся ему\n");
     printf("  ygg-control version      версия\n");
     printf("  ygg-control --selftest   самопроверка (печатает версию - нужна обновлению)\n");
     printf("  ygg-control update       поставить новую версию из репозитория\n\n");
@@ -73,8 +74,35 @@ static void ElevateIfNeeded(int argc, char** argv) {
     exit(1);
 }
 
+// Настоящий yggdrasil (не эта панель): по пути из службы, потом стандартные места
+static std::string RealYggdrasil() {
+    char self[4096] = "";
+    if (!realpath(util::SelfExe().c_str(), self)) self[0] = 0;
+    std::vector<std::string> cand;
+    util::ProcResult r = util::Run({ "systemctl", "show", "yggdrasil", "-p", "ExecStart", "--value" }, 5000);
+    size_t a = r.out.find("argv[]=");
+    if (a != std::string::npos) { auto args = ygg::SplitCmd(r.out.substr(a + 7)); if (!args.empty()) cand.push_back(args[0]); }
+    for (const char* c : { "/usr/bin/yggdrasil", "/usr/sbin/yggdrasil", "/opt/yggdrasil/yggdrasil", "/usr/local/sbin/yggdrasil", "/usr/local/bin/yggdrasil" })
+        cand.push_back(c);
+    for (const auto& c : cand) {
+        char rp[4096];
+        if (access(c.c_str(), X_OK) == 0 && realpath(c.c_str(), rp) && strcmp(rp, self) != 0) return c;
+    }
+    return "";
+}
+
 int main(int argc, char** argv) {
     signal(SIGPIPE, SIG_IGN);
+    // Вызов командой «yggdrasil»: без аргументов - панель, с аргументами
+    // (-genconf, -version, -useconffile ...) - это команда самому Yggdrasil, передаём ему
+    if (util::BaseName(argv[0]) == "yggdrasil" && argc > 1) {
+        std::string real = RealYggdrasil();
+        if (real.empty()) { fprintf(stderr, "Настоящий yggdrasil не найден (эта команда - панель ygg-control).\n"); return 127; }
+        argv[0] = const_cast<char*>(real.c_str());
+        execv(real.c_str(), argv);
+        perror(real.c_str());
+        return 127;
+    }
     std::string cmd = argc > 1 ? argv[1] : "";
     if (cmd == "--selftest" || cmd == "selftest") {
         if (!net::TlsCtx()) return 1;

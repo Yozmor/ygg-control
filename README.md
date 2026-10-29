@@ -13,7 +13,7 @@
 
 **Windows.** Скачай [`windows/ygg_control.exe`](windows/ygg_control.exe) и запусти. Windows попросит права администратора — соглашайся, они нужны для службы, конфига и `yggdrasilctl`. Нужен только установленный Yggdrasil для Windows. Подробно: [windows/README_WINDOWS.md](windows/README_WINDOWS.md)
 
-**Linux.** Собери и поставь командами из [linux/README_LINUX.md](linux/README_LINUX.md) (нужны `g++` и `libssl-dev`), потом запускай `ygg-control`.
+**Linux.** Собери и поставь командами из [linux/README_LINUX.md](linux/README_LINUX.md) (нужны `g++` и `libssl-dev`), потом открывай панель командой `yggdrasil` (или `ygg-control`). С аргументами `yggdrasil` по-прежнему вызывает сам Yggdrasil.
 
 ## Что умеет
 
